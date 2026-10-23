@@ -3,6 +3,7 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { concreteTex, corrugatedTex, hazardTex, plankTex, rustPaintTex, rubberTex } from './materials.js';
+import { Q } from './quality.js';
 
 const ROOM = { w: 17, d: 15, h: 6.2 };
 function m(geo, mat, x, y, z, parent, shadow = true) { const o = new THREE.Mesh(geo, mat); o.position.set(x, y, z); o.castShadow = shadow; o.receiveShadow = true; parent.add(o); return o; }
@@ -112,7 +113,7 @@ function buildLights(scene, G) {
     m(new THREE.SphereGeometry(0.09, 16, 12), bulbMat, x, y - 0.12, z, G, false);
     const sp = new THREE.SpotLight(0xffdcae, shadow ? 95 : 42, 16, Math.PI / 3.2, 0.55, 1.6);
     sp.position.set(x, y - 0.15, z); sp.target.position.set(x * 0.4, 0, z * 0.4); G.add(sp, sp.target);
-    if (shadow) { sp.castShadow = true; sp.shadow.mapSize.set(2048, 2048); sp.shadow.bias = -0.0004; sp.shadow.normalBias = 0.02; sp.shadow.radius = 4; sp.shadow.camera.near = 0.5; sp.shadow.camera.far = 12; }
+    if (shadow) { sp.castShadow = true; sp.shadow.mapSize.set(Q.shadow, Q.shadow); sp.shadow.bias = -0.0004; sp.shadow.normalBias = 0.02; sp.shadow.radius = 4; sp.shadow.camera.near = 0.5; sp.shadow.camera.far = 12; }
     out.push(sp);
     // a faint cone of light through the dust
     const cone = new THREE.Mesh(new THREE.ConeGeometry(1.9, 3.7, 32, 1, true), new THREE.MeshBasicMaterial({ color: 0xffd8a0, transparent: true, opacity: 0.035, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending }));
@@ -130,7 +131,7 @@ function buildLights(scene, G) {
 
 /* ---------- dust in the air ---------- */
 function buildDust(G) {
-  const n = 420, pos = new Float32Array(n * 3), seed = [];
+  const n = Q.dust, pos = new Float32Array(n * 3), seed = [];
   for (let i = 0; i < n; i++) { pos[i * 3] = (Math.random() - 0.5) * 7; pos[i * 3 + 1] = Math.random() * 4.5; pos[i * 3 + 2] = (Math.random() - 0.5) * 7; seed.push(Math.random() * 100); }
   const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
   const c = document.createElement('canvas'); c.width = c.height = 32; const x = c.getContext('2d');

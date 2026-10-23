@@ -12,6 +12,9 @@ export function audio() {
 }
 export function setMuted(m) { muted = m; try { localStorage.setItem('rr_muted', m ? '1' : '0'); } catch (e) { } if (master) master.gain.setTargetAtTime(m ? 0 : 0.7, ctx.currentTime, 0.05); }
 export function isMuted() { return muted; }
+// the Android app pauses and resumes the sound with the app
+export function pauseAudio() { try { if (ctx && ctx.state === 'running') ctx.suspend(); } catch (e) { } }
+export function resumeAudio() { try { if (ctx && ctx.state === 'suspended') ctx.resume(); } catch (e) { } }
 
 let noiseBuf = null;
 function noise() {

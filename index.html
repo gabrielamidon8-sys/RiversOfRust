@@ -2,9 +2,11 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0d0e0f">
+<meta name="mobile-web-app-capable" content="yes">
 <title>RiversOfRust · Garage</title>
-<meta name="description" content="RiversOfRust by DeclAIre Studios: build a war machine from scrap in the garage and take it for a test drive. PC prototype.">
+<meta name="description" content="RiversOfRust by DeclAIre Studios: build a war machine from scrap in the garage and take it for a test drive. Plays with keyboard and mouse, a controller or touch.">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='10' fill='%2316181a'/%3E%3Ccircle cx='32' cy='32' r='19' fill='none' stroke='%23c4561e' stroke-width='7'/%3E%3Ccircle cx='32' cy='32' r='6' fill='%23d9c9a4'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="css/style.css">
 <script type="importmap">
@@ -31,6 +33,7 @@
   </nav>
   <div class="right">
     <a class="acct" id="acct" href="https://headless-iilujwebfcb-gabrielamidon8-140e.wix-site-host.com/" target="_blank" rel="noopener"><i></i><span>Guest</span></a>
+    <button class="iconbtn" id="fs" title="Full screen" aria-label="Full screen" hidden><svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg></button>
     <button class="iconbtn" id="mute" title="Sound on/off" aria-label="Sound on or off"><svg viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4z" fill="currentColor"/><path class="w" d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
   </div>
 </header>
@@ -43,7 +46,7 @@
     <button class="go" id="goDrive">Test drive <span>→</span></button>
   </div>
   <div class="pf">
-    <button class="build" id="build"><span id="buildLbl">Build</span><small id="buildSub">Bolt parts onto the frame</small></button>
+    <button class="build" id="build"><span id="buildLbl">Build</span><small id="buildSub">Bolt parts onto the frame</small><em class="padhint" id="buildPad"></em></button>
     <button class="link" id="clear">Strip the car back to the frame shelf</button>
   </div>
 </aside>
@@ -55,10 +58,23 @@
 <div class="drivehud" id="driveHud" hidden>
   <button class="back" id="back">← Garage <small>Tab</small></button>
   <div class="gauge"><div class="spd"><b id="spd">0</b><small>km/h</small></div><div class="gear" id="gear">N</div><div class="rpm"><i id="rpm"></i></div></div>
-  <div class="keys"><span><kbd>W</kbd><kbd>S</kbd> drive / brake</span><span><kbd>A</kbd><kbd>D</kbd> steer</span><span><kbd>Space</kbd> handbrake</span><span><kbd>Mouse</kbd> aim · <kbd>Click</kbd> fire</span><span><kbd>R</kbd> flip upright</span></div>
+  <div class="keys" id="keys"></div>
   <div class="aimtip" id="aimTip">Click to aim with the mouse · Esc lets it go</div>
   <div class="cross" id="cross"></div>
-  <div class="flipped" id="flipped" hidden>On its roof? Press <kbd>R</kbd></div>
+  <div class="flipped" id="flipped" hidden></div>
+  <div class="touch" id="touchUi" aria-hidden="true">
+    <div class="tzone tleft" id="tLeft"><div class="tbase" id="tBase"><i id="tKnob"></i></div><span class="tlabel">Drag to drive</span></div>
+    <div class="tzone tright" id="tRight"><span class="tlabel">Drag to look</span></div>
+    <button class="tbtn tfire" id="tFire">Fire</button>
+    <button class="tbtn thb" id="tHb">Hand<br>brake</button>
+    <button class="tbtn tflip" id="tFlip">Flip</button>
+  </div>
+</div>
+
+<div class="rotate" id="rotate" hidden><svg viewBox="0 0 64 64" aria-hidden="true"><rect x="20" y="8" width="24" height="44" rx="4" fill="none" stroke="currentColor" stroke-width="3"/><path d="M48 46a18 18 0 0 0 6-14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/><path d="M50 30l4 3 3-4" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg><b>Turn your phone sideways</b><span>The test drive needs the whole width.</span></div>
+
+<div class="modal" id="modal" hidden role="dialog" aria-modal="true" aria-labelledby="modalT">
+  <div class="mbox"><b id="modalT"></b><p id="modalP"></p><div class="mbtns"><button class="mno" id="modalNo">Cancel</button><button class="myes" id="modalYes">Yes</button></div></div>
 </div>
 
 <script src="js/core.js"></script>

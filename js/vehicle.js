@@ -55,26 +55,31 @@ export function createVehicle(world, spec, at = { x: 0, y: 1.2, z: 0, yaw: 0 }, 
   vehicle.addToWorld(world);
   const st = { steer: 0, throttle: 0, speed: 0, kmh: 0, rpm: 900, gear: 'N', grounded: 0, slip: 0, flippedFor: 0 };
 
-  // one physics step's worth of driving. input: { up, down, left, right, handbrake } booleans
+  // one physics step's worth of driving. input: either keys { up, down, left, right, handbrake } (booleans) or analog
+  // { gas: 0..1, brake: 0..1, steer: -1..1 (+ is left), handbrake } from a controller's triggers and stick or the
+  // touch stick; a field left out falls back to its key.
+  const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
   function drive(input, dt) {
     const v = body.velocity, q = body.quaternion;
     const fwd = q.vmult(new CANNON.Vec3(0, 0, 1)), up = q.vmult(new CANNON.Vec3(0, 1, 0));
     const along = v.dot(fwd); st.speed = along; st.kmh = Math.abs(along) * 3.6;
+    const gas = input.gas != null ? clamp(input.gas, 0, 1) : (input.up ? 1 : 0);
+    const brk = input.brake != null ? clamp(input.brake, 0, 1) : (input.down ? 1 : 0);
     // throttle: forward, or brake then reverse
     let force = 0, brake = 0;
-    if (input.up && !input.down) { force = along < TUNE.topSpeed ? 1 : 0; st.gear = 'D'; }
-    else if (input.down && !input.up) {
-      if (along > 1.2) brake = TUNE.brake;
-      else { force = along > -TUNE.reverseTop ? -0.55 : 0; st.gear = 'R'; }
+    if (gas > 0.04 && gas >= brk) { force = along < TUNE.topSpeed ? gas : 0; st.gear = 'D'; }
+    else if (brk > 0.04) {
+      if (along > 1.2) brake = TUNE.brake * (0.25 + 0.75 * brk);
+      else { force = along > -TUNE.reverseTop ? -0.55 * brk : 0; st.gear = 'R'; }
     } else if (Math.abs(along) < 0.3) st.gear = 'N';
-    st.throttle += ((force !== 0 ? 1 : 0) - st.throttle) * Math.min(1, dt * 6);
+    st.throttle += ((force !== 0 ? Math.max(gas, brk) : 0) - st.throttle) * Math.min(1, dt * 6);
     // the engine's power runs out as speed rises (P = F v), so the push fades toward the top speed
     const power = PART_DEFS.engine.power * 745.7 * 0.6;   // what reaches the ground through the box and the 4WD
     const avail = Math.min(TUNE.maxForce, power / Math.max(4, Math.abs(along)));
     const fade = force > 0 ? Math.max(0, 1 - Math.pow(Math.max(0, along) / TUNE.topSpeed, 6)) : 1;
     const driven = wheels.length || 1, per = force * avail * fade / driven;
     // steering, gentler at speed
-    const target = (input.left ? 1 : 0) - (input.right ? 1 : 0);
+    const target = input.steer != null ? clamp(input.steer, -1, 1) : (input.left ? 1 : 0) - (input.right ? 1 : 0);
     st.steer += Math.max(-1, Math.min(1, target - st.steer)) * Math.min(1, dt * TUNE.steerRate * (target === 0 ? 1.6 : 1));
     if (Math.abs(st.steer) < 0.002 && target === 0) st.steer = 0;
     const steerAng = st.steer * TUNE.steerMax / (1 + Math.abs(along) / 16);

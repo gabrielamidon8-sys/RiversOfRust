@@ -1,5 +1,6 @@
 // TEST DRIVE for RiversOfRust: a stretch of desert with ramps, barriers, crates and drums to knock about, and the car
-// you built, driven by the physics in vehicle.js. Mouse aims the camera and the turret; left click fires.
+// you built, driven by the physics in vehicle.js. Keyboard and mouse, a controller or touch all drive it (input.js
+// says which one is in use); the turret always aims where the camera looks.
 import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
 import { Sky } from 'three/addons/objects/Sky.js';
@@ -8,6 +9,9 @@ import { buildPart } from './parts.js';
 import { createVehicle } from './vehicle.js';
 import { sandTex, plankTex, rustPaintTex, rubberTex } from './materials.js';
 import { engineSound, shot, hit } from './audio.js';
+import { IN, pad, B, buzz } from './input.js';
+import { createTouchDrive } from './touchdrive.js';
+import { Q } from './quality.js';
 
 // sandstone: horizontal bands of red, buff and ochre, weathered
 function strata() {
@@ -19,7 +23,7 @@ function strata() {
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(6, 1); return t;
 }
 
-export function createDrive({ renderer, dom, hud }) {
+export function createDrive({ renderer, dom, hud, onExit }) {
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(62, 1, 0.1, 1500);
   let world = null, car = null, carVis = null, wheelsVis = [], turret = null, statics = [], dynamics = [], active = false, eng = null;
@@ -33,7 +37,7 @@ export function createDrive({ renderer, dom, hud }) {
   scene.fog = new THREE.Fog(0xd6b38a, 90, 520);
   scene.add(new THREE.HemisphereLight(0xcfe0f2, 0x9a7650, 0.9));
   const sunL = new THREE.DirectionalLight(0xffe2b8, 3.1); sunL.position.copy(sun).multiplyScalar(80); sunL.castShadow = true;
-  sunL.shadow.mapSize.set(2048, 2048); const sc = sunL.shadow.camera; sc.left = sc.bottom = -38; sc.right = sc.top = 38; sc.near = 1; sc.far = 220; sunL.shadow.bias = -0.0005; sunL.shadow.normalBias = 0.03;
+  sunL.shadow.mapSize.set(Q.shadow, Q.shadow); const sc = sunL.shadow.camera; sc.left = sc.bottom = -38; sc.right = sc.top = 38; sc.near = 1; sc.far = 220; sunL.shadow.bias = -0.0005; sunL.shadow.normalBias = 0.03;
   scene.add(sunL, sunL.target);
   const sand = sandTex();
   const ground = new THREE.Mesh(new THREE.PlaneGeometry(1200, 1200, 1, 1), new THREE.MeshStandardMaterial({ map: sand.color, bumpMap: sand.bump, bumpScale: 0.8, roughness: 0.96 }));
@@ -129,7 +133,7 @@ export function createDrive({ renderer, dom, hud }) {
     for (const k in keys) keys[k] = false;
   }
   function stop() {
-    active = false; if (eng) { eng.stop(); eng = null; }
+    active = false; if (eng) { eng.stop(); eng = null; } if (touch) touch.reset(); firing = false;
     if (document.pointerLockElement === dom) document.exitPointerLock();
     for (const s of statics) scene.remove(s.mesh); for (const d of dynamics) scene.remove(d.mesh); for (const w of wheelsVis) scene.remove(w.spin);
     for (const p of puffs) scene.remove(p.m); puffs.length = 0;
@@ -145,19 +149,24 @@ export function createDrive({ renderer, dom, hud }) {
     if (e.code === 'KeyR') resetCar();
   });
   window.addEventListener('keyup', e => { if (map[e.code]) keys[map[e.code]] = false; });
-  window.addEventListener('blur', () => { for (const k in keys) keys[k] = false; firing = false; });
-  dom.addEventListener('mousedown', e => {
-    if (!active) return;
+  window.addEventListener('blur', () => { for (const k in keys) keys[k] = false; firing = false; if (touch) touch.reset(); });
+  // the mouse: click locks it to the game and fires; moving it aims (only a real mouse: a tap must not lock anything)
+  dom.addEventListener('pointerdown', e => {
+    if (!active || e.pointerType !== 'mouse') return;
     if (e.button === 0) { if (!locked && dom.requestPointerLock) { const r = dom.requestPointerLock(); if (r && r.catch) r.catch(() => { }); } firing = true; }
   });
-  window.addEventListener('mouseup', e => { if (e.button === 0) firing = false; });
+  window.addEventListener('pointerup', e => { if (e.pointerType === 'mouse' && e.button === 0) firing = false; });
   document.addEventListener('pointerlockchange', () => { locked = document.pointerLockElement === dom; hud.lock(locked); if (!locked) firing = false; });
-  let lookT = 0;   // seconds since the mouse last moved the camera
-  dom.addEventListener('mousemove', e => {
-    if (!active) return;
-    if (locked) { yaw -= e.movementX * 0.0025; pitch = Math.max(-0.15, Math.min(1.2, pitch + e.movementY * 0.0022)); lookT = 0; }
-    else if (e.buttons & 2) { yaw -= e.movementX * 0.004; pitch = Math.max(-0.15, Math.min(1.2, pitch + e.movementY * 0.003)); lookT = 0; }
+  let lookT = 0;   // seconds since anything last moved the camera
+  const pitchClamp = p => Math.max(-0.15, Math.min(1.2, p));
+  dom.addEventListener('pointermove', e => {
+    if (!active || e.pointerType !== 'mouse') return;
+    if (locked) { yaw -= e.movementX * 0.0025; pitch = pitchClamp(pitch + e.movementY * 0.0022); lookT = 0; }
+    else if (e.buttons & 2) { yaw -= e.movementX * 0.004; pitch = pitchClamp(pitch + e.movementY * 0.003); lookT = 0; }
   });
+  // touch: the on-screen stick and buttons
+  const touchRoot = document.getElementById('touchUi'), touch = touchRoot ? createTouchDrive(touchRoot) : null;
+  let snapBehind = false, shots = 0;
   dom.addEventListener('wheel', e => { if (active) dist = Math.max(4.5, Math.min(16, dist * (1 + Math.sign(e.deltaY) * 0.08))); }, { passive: true });
   function resetCar() { if (!car) return; const p = car.body.position, f = car.body.quaternion.vmult(new CANNON.Vec3(0, 0, 1)); car.reset(p.x, p.z, Math.atan2(f.x, f.z)); }
 
@@ -166,8 +175,10 @@ export function createDrive({ renderer, dom, hud }) {
   const flash = new THREE.PointLight(0xffb060, 0, 8, 2); scene.add(flash);
   const rayRes = new CANNON.RaycastResult();
   function fire(dt) {
-    fireT -= dt; if (!firing || fireT > 0 || !turret) { flash.intensity = Math.max(0, flash.intensity - dt * 120); return; }
-    fireT = 0.09;
+    const want = firing || (IN.kind === 'pad' && pad.held(B.RB)) || (touch && touch.fire);
+    fireT -= dt; if (!want || fireT > 0 || !turret) { flash.intensity = Math.max(0, flash.intensity - dt * 120); return; }
+    fireT = 0.09; shots++;
+    if (IN.kind === 'pad') pad.rumble(60, 0.25, 0.1); else if (shots % 3 === 0) buzz(8);
     const from = new THREE.Vector3(); turret.muzzle.getWorldPosition(from);
     const dir = new THREE.Vector3(0, 0, 1).applyQuaternion(turret.muzzle.getWorldQuaternion(new THREE.Quaternion())).normalize();
     dir.x += (Math.random() - 0.5) * 0.012; dir.y += (Math.random() - 0.5) * 0.012; dir.normalize();
@@ -193,8 +204,26 @@ export function createDrive({ renderer, dom, hud }) {
   function update(dt) {
     if (!active) return;
     t += dt;
-    const input = { up: keys.up, down: keys.down, left: keys.left, right: keys.right, handbrake: keys.handbrake };
-    car.drive(input, dt);
+    // keys, then the controller, then touch; whichever is pushed hardest wins
+    let steer = (keys.left ? 1 : 0) - (keys.right ? 1 : 0), gas = keys.up ? 1 : 0, brake = keys.down ? 1 : 0, hb = !!keys.handbrake;
+    if (pad.connected) {
+      const ls = pad.stick(0), rs = pad.stick(1);
+      steer -= ls.x;
+      gas = Math.max(gas, pad.value(B.RT), ls.y < -0.35 ? (-ls.y - 0.35) / 0.65 : 0);
+      brake = Math.max(brake, pad.value(B.LT), ls.y > 0.35 ? (ls.y - 0.35) / 0.65 : 0);
+      hb = hb || pad.held(B.A);
+      if (rs.x || rs.y) { yaw -= rs.x * dt * 2.8; pitch = pitchClamp(pitch + rs.y * dt * 1.9); lookT = 0; }
+      if (pad.hit(B.Y)) resetCar();
+      if (pad.hit(B.B)) snapBehind = true;
+      if (pad.hit(B.VIEW) && onExit) { onExit(); return; }
+    }
+    if (touch && IN.kind === 'touch') {
+      steer += touch.steer; gas = Math.max(gas, touch.gas); brake = Math.max(brake, touch.brake); hb = hb || touch.hb;
+      const d = touch.takeLook();
+      if (d.x || d.y) { yaw -= d.x * 0.0065; pitch = pitchClamp(pitch + d.y * 0.005); lookT = 0; }
+      if (touch.flip) { touch.flip = false; resetCar(); }
+    }
+    car.drive({ steer: Math.max(-1, Math.min(1, steer)), gas, brake, handbrake: hb }, dt);
     world.step(1 / 60, dt, 4);
     const b = car.body;
     carVis.position.copy(b.position); carVis.quaternion.copy(b.quaternion);
@@ -236,9 +265,10 @@ export function createDrive({ renderer, dom, hud }) {
     // camera: orbit behind the car where the mouse puts it; left alone, it drifts back behind the car
     const bp = carVis.position;
     lookT += dt;
-    if (lookT > 1.5 && Math.abs(car.state.speed) > 2) {
+    if (snapBehind || (lookT > 1.5 && Math.abs(car.state.speed) > 2)) {
       const f = car.body.quaternion.vmult(new CANNON.Vec3(0, 0, 1)), behind = Math.atan2(-f.x, -f.z);
-      let d = behind - yaw; d = Math.atan2(Math.sin(d), Math.cos(d)); yaw += d * Math.min(1, dt * 1.8);
+      let d = behind - yaw; d = Math.atan2(Math.sin(d), Math.cos(d)); yaw += snapBehind ? d : d * Math.min(1, dt * 1.8);
+      if (snapBehind) { snapBehind = false; pitch = 0.3; }
     }
     camTarget.lerp(tmpV.set(bp.x, bp.y + 1.1, bp.z), Math.min(1, dt * 10));
     const cx = camTarget.x + Math.sin(yaw) * Math.cos(pitch) * dist, cz = camTarget.z + Math.cos(yaw) * Math.cos(pitch) * dist, cy = Math.max(0.6, camTarget.y + Math.sin(pitch) * dist);
@@ -261,6 +291,6 @@ export function createDrive({ renderer, dom, hud }) {
   }
   function resize(w, h) { camera.aspect = w / h; camera.updateProjectionMatrix(); }
   // for tests: run the drive for a while without drawing (the same update the frame loop calls)
-  function simulate(secs, input) { const save = Object.assign({}, keys); Object.assign(keys, { up: false, down: false, left: false, right: false, handbrake: false }, input || {}); for (let i = 0; i < secs * 60; i++) update(1 / 60); Object.assign(keys, save); }
-  return { scene, camera, start, stop, update, resize, simulate, get active() { return active; }, get car() { return car; }, keys, resetCar };
+  function simulate(secs, input, each) { const save = Object.assign({}, keys); Object.assign(keys, { up: false, down: false, left: false, right: false, handbrake: false }, input || {}); for (let i = 0; i < secs * 60; i++) { if (each) each(); update(1 / 60); } Object.assign(keys, save); }
+  return { scene, camera, start, stop, update, resize, simulate, get active() { return active; }, get car() { return car; }, keys, resetCar, touch, view: () => ({ yaw, pitch }), get shots() { return shots; } };
 }

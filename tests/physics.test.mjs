@@ -81,5 +81,15 @@ const up = car => car.body.quaternion.vmult(new CANNON.Vec3(0, 1, 0)).y;
   run(world, car, 1.2, { up: true, left: true, handbrake: true });
   ok(up(car) > 0.5, 'handbrake turn at speed stays on its wheels');
 }
+{ // analog: half gas pulls slower than full gas, a half-pressed stick steers less than full lock
+  const a = setup(), b = setup(); run(a.world, a.car, 1, {}); run(b.world, b.car, 1, {});
+  run(a.world, a.car, 4, { gas: 1 }); run(b.world, b.car, 4, { gas: 0.5 });
+  ok(b.car.state.kmh > 10 && b.car.state.kmh < a.car.state.kmh * 0.85, `half gas is slower (${b.car.state.kmh.toFixed(0)} vs ${a.car.state.kmh.toFixed(0)} km/h after 4 s)`);
+  const c = setup(), d = setup(); run(c.world, c.car, 1, {}); run(d.world, d.car, 1, {});
+  run(c.world, c.car, 3, { gas: 0.6, steer: 1 }); run(d.world, d.car, 3, { gas: 0.6, steer: 0.4 });
+  ok(c.car.body.position.x > d.car.body.position.x && d.car.body.position.x > 0.3, `a light touch steers less (x ${d.car.body.position.x.toFixed(1)} vs ${c.car.body.position.x.toFixed(1)} m)`);
+  const e = setup(); run(e.world, e.car, 1, {}); run(e.world, e.car, 3, { brake: 1 });
+  ok(e.car.state.gear === 'R' && e.car.body.position.z < -2, `the brake trigger reverses from a stop (${e.car.body.position.z.toFixed(1)} m)`);
+}
 console.log(fails ? `\n${fails} FAILED` : '\nall passed');
 process.exit(fails ? 1 : 0);

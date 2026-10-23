@@ -1,7 +1,7 @@
 // RiversOfRust: shared numbers. One grid unit is 0.35 m, so the 4 x 12 x 2 frame is 1.4 m wide, 4.2 m long and
 // 0.7 m tall, the 4 x 6 half body is a real cabin's footprint and its 3-unit height (1.05 m) a real cabin's height.
 export const U = 0.35;
-export const VERSION = '0.1.0';
+export const VERSION = '0.2.0';
 
 // what each part is, what it weighs (kg) and what it says in the parts panel
 export const PART_DEFS = {

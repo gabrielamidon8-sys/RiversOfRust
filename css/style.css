@@ -10,6 +10,7 @@
   --mono: 'Share Tech Mono', ui-monospace, monospace; --ui: 'Chakra Petch', 'Segoe UI', system-ui, sans-serif; --stencil: 'Saira Stencil One', Impact, sans-serif;
 }
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 html, body { margin: 0; height: 100%; background: var(--ink); color: var(--text); font: 500 14px/1.35 var(--ui); overflow: hidden; user-select: none; -webkit-user-select: none; }
 #view { position: fixed; inset: 0; width: 100%; height: 100%; display: block; outline: none; }
 button { font: inherit; color: inherit; cursor: pointer; }
@@ -113,3 +114,113 @@ kbd { font: 12px var(--mono); padding: 1px 6px; border: 1px solid #55504a; borde
 .flipped { position: absolute; left: 50%; top: 40%; transform: translate(-50%, -50%); padding: 14px 22px; background: rgba(16,17,19,.9); border: 1px solid var(--warn); font: 600 16px var(--ui); color: var(--warn); pointer-events: none; }
 body.driving .panel, body.driving .hint, body.driving .stats { display: none; }
 @media (max-width: 900px) { .panel { width: 250px; } .hint { max-width: calc(100% - 300px); } .brand small { display: none; } }
+
+/* ================= 0.2: touch, controller, phones ================= */
+#view { touch-action: none; -webkit-tap-highlight-color: transparent; }
+button, .part { -webkit-tap-highlight-color: transparent; }
+.top { padding-left: max(18px, env(safe-area-inset-left)); padding-right: max(18px, env(safe-area-inset-right)); }
+.panel { right: max(16px, env(safe-area-inset-right)); }
+.hint { left: max(18px, env(safe-area-inset-left)); }
+
+/* controller buttons drawn the way they look on the controller in use */
+kbd.pb { display: inline-grid; place-items: center; min-width: 22px; height: 22px; padding: 0 5px; border: 0; border-radius: 11px; background: #33373c; color: #fff; font: 700 11px/1 var(--ui); vertical-align: middle; }
+kbd.pb-a { background: #2e8b3a; } kbd.pb-b { background: #b8352b; } kbd.pb-x { background: #2f62b8; } kbd.pb-y { background: #c99a1f; color: #1a1405; }
+kbd.ps.pb-a { background: #3b5bb5; } kbd.ps.pb-b { background: #b8352b; } kbd.ps.pb-x { background: #a14fa0; } kbd.ps.pb-y { background: #2f8f7a; color: #fff; }
+.padhint { display: none; }
+[data-input="pad"] .padhint { display: block; margin-top: 6px; font: normal 600 11px var(--ui); letter-spacing: .08em; text-transform: uppercase; opacity: .85; }
+[data-input="pad"] .link { display: none; }
+.part.focus { outline: 2px solid var(--glow); outline-offset: -2px; background: rgba(40,60,70,.6); }
+.hint kbd.pb { margin: 0 2px; }
+.keys kbd.pb { margin-right: 2px; }
+
+/* the drive's hints and crosshair for each way of playing */
+[data-input="touch"] .keys, [data-input="touch"] .aimtip, [data-input="pad"] .aimtip { display: none; }
+[data-input="touch"] .cross, [data-input="pad"] .cross { display: block; }
+[data-input="touch"] .back small, [data-input="pad"] .back small { display: none; }
+
+/* touch driving */
+.touch { position: absolute; inset: 0; display: none; pointer-events: none; }
+[data-input="touch"] .touch { display: block; }
+.touch > * { pointer-events: auto; touch-action: none; user-select: none; -webkit-user-select: none; }
+.tzone { position: absolute; top: 60px; bottom: 0; }
+.tleft { left: 0; width: 46%; }
+.tright { left: 46%; right: 0; }
+.tlabel { position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%); font: 600 11px var(--ui); letter-spacing: .14em; text-transform: uppercase; color: rgba(230,221,201,.45); white-space: nowrap; pointer-events: none; }
+.tbase { position: absolute; left: max(120px, calc(env(safe-area-inset-left) + 100px)); top: calc(100% - 128px); width: 128px; height: 128px; margin: -64px 0 0 -64px; border-radius: 50%; border: 2px solid rgba(217,201,164,.3); background: radial-gradient(circle, rgba(16,17,19,.18), rgba(16,17,19,.42)); opacity: .55; pointer-events: none; transition: opacity .15s; }
+.tbase.on { opacity: 1; transition: none; }
+.tbase i { position: absolute; left: 50%; top: 50%; width: 58px; height: 58px; margin: -29px 0 0 -29px; border-radius: 50%; background: radial-gradient(circle at 40% 35%, rgba(240,230,210,.75), rgba(180,165,140,.55)); border: 2px solid rgba(217,201,164,.85); box-shadow: 0 4px 14px rgba(0,0,0,.4); }
+.tbtn { position: absolute; display: grid; place-items: center; border-radius: 50%; border: 2px solid rgba(217,201,164,.55); background: rgba(16,17,19,.45); color: var(--sand); font: 700 12px/1.05 var(--ui); letter-spacing: .1em; text-transform: uppercase; text-align: center; padding: 0; }
+.tbtn.down { transform: scale(.93); filter: brightness(1.35); }
+.tfire { right: max(26px, calc(env(safe-area-inset-right) + 14px)); bottom: 30px; width: 104px; height: 104px; font-size: 16px; background: rgba(196,86,30,.55); border-color: var(--rust2); color: #fff3e6; }
+.thb { right: max(146px, calc(env(safe-area-inset-right) + 134px)); bottom: 22px; width: 74px; height: 74px; }
+.tflip { right: max(46px, calc(env(safe-area-inset-right) + 34px)); bottom: 152px; width: 60px; height: 60px; }
+
+/* turn your phone */
+.rotate { position: fixed; inset: 0; z-index: 45; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 24px; background: rgba(10,11,12,.94); color: var(--sand); text-align: center; }
+.rotate svg { width: 76px; height: 76px; color: var(--rust2); animation: tilt 1.8s ease-in-out infinite; }
+.rotate b { font: 26px var(--stencil); letter-spacing: .04em; }
+.rotate span { color: var(--dim); }
+@keyframes tilt { 40%, 60% { transform: rotate(-90deg); } }
+
+/* the in-game question box (also works with a controller) */
+.modal { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; background: rgba(5,6,7,.7); padding: 16px; }
+.mbox { width: min(420px, 100%); padding: 20px; background: linear-gradient(180deg, #1d2024, #141619); border: 1px solid var(--line); box-shadow: 0 30px 70px rgba(0,0,0,.6); }
+.mbox b { display: block; font: 22px var(--stencil); letter-spacing: .04em; color: var(--sand); }
+.mbox p { margin: 8px 0 18px; color: var(--text); }
+.mbtns { display: flex; gap: 10px; justify-content: flex-end; }
+.mbtns button { padding: 10px 18px; border: 1px solid var(--line); background: #24272b; font: 700 13px var(--ui); letter-spacing: .1em; text-transform: uppercase; color: var(--text); display: inline-flex; gap: 8px; align-items: center; }
+.mbtns .myes { background: var(--rust); border-color: var(--rust); color: #1a0d05; }
+.mbtns button:focus-visible { outline: 2px solid var(--glow); outline-offset: 2px; }
+
+/* ---------- phones held sideways (and any short screen) ---------- */
+@media (max-height: 540px) {
+  .top { height: 50px; }
+  .brand b { font-size: 18px; } .brand small { display: none; }
+  .tab { padding: 6px 14px; font-size: 11px; }
+  .acct { padding: 5px 9px; font-size: 11px; } .iconbtn { width: 32px; height: 32px; }
+  .panel { top: 56px; bottom: 8px; right: max(8px, env(safe-area-inset-right)); width: 238px; }
+  .ph { padding: 10px 12px 7px; } .ph span { font-size: 16px; }
+  .parts { padding: 6px; }
+  .part { grid-template-columns: 58px 1fr; gap: 8px; padding: 5px; margin-bottom: 5px; }
+  .thumb { width: 58px; height: 44px; }
+  .pn b { font-size: 12.5px; } .pn small { font-size: 10.5px; } .pn .why { font-size: 10.5px; }
+  .pf { padding: 8px; } .build { padding: 9px 8px 7px; } .build span { font-size: 20px; } .build small { font-size: 9.5px; }
+  .link { margin-top: 4px; font-size: 11px; }
+  .done { margin: 6px; padding: 10px; } .done b { font-size: 14px; } .done p { margin: 4px 0 8px; font-size: 12px; } .go { padding: 9px; font-size: 13px; }
+  .hint { bottom: 8px; left: max(8px, env(safe-area-inset-left)); max-width: calc(100% - 270px); padding: 8px 12px; font-size: 12.5px; }
+  .stats { top: 56px; left: max(8px, env(safe-area-inset-left)); } .stats div { padding: 4px 8px; font-size: 11px; }
+  .toast { top: 58px; font-size: 13px; }
+  .back { top: 58px; left: max(10px, env(safe-area-inset-left)); padding: 7px 12px; font-size: 12px; }
+  .gauge { bottom: 10px; padding: 8px 16px 10px; } .spd b { font-size: 38px; } .gear { font-size: 26px; }
+  .keys { bottom: 10px; padding: 8px 10px; font-size: 11.5px; gap: 4px; }
+  .tzone { top: 52px; }
+  .tfire { width: 92px; height: 92px; bottom: 18px; } .thb { width: 66px; height: 66px; bottom: 14px; right: max(132px, calc(env(safe-area-inset-right) + 120px)); } .tflip { bottom: 124px; width: 54px; height: 54px; }
+  .tbase { top: calc(100% - 104px); }
+}
+
+/* ---------- phones held upright: the parts slide along the bottom ---------- */
+@media (orientation: portrait) and (max-width: 700px) {
+  .top { height: 52px; padding: 0 10px; }
+  .brand b { font-size: 17px; } .brand small { display: none; }
+  .tab { padding: 6px 12px; font-size: 11px; letter-spacing: .1em; }
+  .acct span { display: none; } .acct { padding: 8px; }
+  .right { gap: 6px; } .iconbtn { width: 32px; height: 32px; }
+  .panel { top: auto; left: 8px; right: 8px; bottom: max(8px, env(safe-area-inset-bottom)); width: auto; max-height: 52vh; }
+  .ph { padding: 8px 12px 6px; } .ph span { font-size: 16px; }
+  .parts { display: flex; gap: 6px; overflow-x: auto; overflow-y: hidden; padding: 6px; flex: none; }
+  .part { flex: 0 0 104px; grid-template-columns: 1fr; gap: 4px; margin: 0; padding: 5px; }
+  .part:hover { transform: none; }
+  .thumb { width: 100%; height: 58px; }
+  .pn b { font-size: 12px; } .pn small { font-size: 10px; } .pn .why { font-size: 10px; }
+  .done { margin: 6px; padding: 10px; } .done b { font-size: 15px; } .done p { display: none; } .go { padding: 9px; font-size: 13px; }
+  .pf { display: flex; gap: 10px; align-items: center; padding: 8px; }
+  .build { flex: 1; padding: 8px; } .build span { font-size: 20px; } .build small { font-size: 9.5px; }
+  .link { width: auto; flex: 0 0 34%; margin: 0; font-size: 11px; text-align: left; }
+  .hint { top: 58px; bottom: auto; left: 8px; right: 8px; max-width: none; padding: 8px 12px; font-size: 12.5px; }
+  .stats { display: none; }
+  .toast { top: 60px; width: calc(100% - 24px); text-align: center; }
+}
+/* the Garage button and the flip message sit above the touch zones */
+.drivehud .back { z-index: 3; }
+.drivehud .flipped { z-index: 3; }
+.touch { z-index: 1; }

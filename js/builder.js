@@ -68,9 +68,46 @@ export function createBuilder({ scene, camera, dom, garage, onChange, toast }) {
     if (!A.remaining(placed).includes(key)) return false;
     const why = A.lockReason(key, placed); if (why) { toast(why); return false; }
     const g = ghostOf(key); g.visible = false; carRoot.add(g);
-    holding = { key, ghost: g, snap: null, drag: !!opts.drag };
-    showMarkers(key); pickup(); updateGhost(); onChange(); return true;
+    // the part starts on the most likely free spot (steering wheels at the front, drive wheels at the back), so on a
+    // phone or a controller you see where it goes straight away; the mouse takes over as soon as it moves
+    holding = { key, ghost: g, snap: preferred(key, A.freeSockets(key, placed)), drag: !!opts.drag, manual: true };
+    selIdx = -1; setHover(null);
+    showMarkers(key); pickup(); showSnap(); onChange(); return true;
   }
+  function preferred(key, free) {
+    const want = { body: ['deck:-1'], turret: ['roof:0'], wheelS: ['mount:FL', 'mount:FR'], wheelD: ['mount:RL', 'mount:RR'] }[key] || [];
+    return want.find(w => free.includes(w)) || free[0] || null;
+  }
+  // put the ghost on the chosen spot (or hide it) and light that spot's marker green
+  function showSnap() {
+    if (!holding) return;
+    const g = holding.ghost, s = holding.snap;
+    carRoot.updateMatrixWorld();
+    if (s) { put(g, s); g.visible = true; g.userData.ghostMat.color.set(0x55ff9a); g.userData.ghostMat.emissive.set(0x1b8f4a); g.userData.ghostMat.opacity = 0.6; }
+    else g.visible = false;
+    paintMarkers(s);
+  }
+  function paintMarkers(s) {
+    for (const mk of markers.children) {
+      const on = s && region(s).id === mk.userData.region;
+      mk.material.color.set(on ? 0x55ff9a : 0x3fd4ff); mk.children[0].material.color.set(on ? 0xb4ffd0 : 0x8fe8ff);
+    }
+  }
+  // controller: the next free spot for the part in hand
+  function cycleSnap(dir) {
+    if (!holding) return;
+    const free = A.freeSockets(holding.key, placed); if (!free.length) return;
+    const i = free.indexOf(holding.snap), n = free.length;
+    holding.snap = free[i < 0 ? 0 : ((i + dir) % n + n) % n]; holding.manual = true; showSnap();
+  }
+  // controller: step through the parts on the car, then take the chosen one off
+  let selIdx = -1;
+  function selectPlaced(dir) {
+    if (holding || !placed.length) return;
+    const n = placed.length; selIdx = selIdx < 0 ? (dir > 0 ? 0 : n - 1) : ((selIdx + dir) % n + n) % n;
+    setHover(placed[selIdx].obj);
+  }
+  function takeOffSelected() { const p = placed[selIdx]; selIdx = -1; if (!p) return false; takeOff(p.uid); return true; }
   function cancelHolding(silent) {
     if (!holding) return;
     carRoot.remove(holding.ghost); holding.ghost.traverse(c => c.geometry && c.geometry.dispose());
@@ -96,6 +133,7 @@ export function createBuilder({ scene, camera, dom, garage, onChange, toast }) {
   }
   function updateGhost() {
     if (!holding) return;
+    if (holding.manual) return showSnap();
     carRoot.updateMatrixWorld();
     const s = nearest(holding.key), g = holding.ghost;
     holding.snap = s;
@@ -107,10 +145,7 @@ export function createBuilder({ scene, camera, dom, garage, onChange, toast }) {
       if (ray.ray.intersectPlane(plane, hit)) { carRoot.worldToLocal(hit); g.position.copy(hit); g.rotation.set(0, 0, 0); g.visible = true; }
       g.userData.ghostMat.color.set(0xff8a3d); g.userData.ghostMat.emissive.set(0x7a2a00); g.userData.ghostMat.opacity = 0.35;
     } else g.visible = false;
-    for (const mk of markers.children) {
-      const on = s && region(s).id === mk.userData.region;
-      mk.material.color.set(on ? 0x55ff9a : 0x3fd4ff); mk.children[0].material.color.set(on ? 0xb4ffd0 : 0x8fe8ff);
-    }
+    paintMarkers(s);
   }
   function placeHeld() {
     if (!holding || !holding.snap) return false;
@@ -147,36 +182,52 @@ export function createBuilder({ scene, camera, dom, garage, onChange, toast }) {
     return null;
   }
 
-  /* ---------- pointer ---------- */
+  /* ---------- pointer: mouse, finger or pen ---------- */
   let down = null;
+  const at = e => { const r = dom.getBoundingClientRect(); mouse.x = e.clientX - r.left; mouse.y = e.clientY - r.top; };
   dom.addEventListener('pointermove', e => {
-    const r = dom.getBoundingClientRect(); mouse.x = e.clientX - r.left; mouse.y = e.clientY - r.top; mouse.in = true;
+    // a finger dragging on the car is turning the camera, not moving the part
+    if (e.pointerType !== 'mouse') return;
+    at(e); mouse.in = true;
     if (!buildMode) return;
-    if (holding) updateGhost(); else setHover(pickAt());
+    if (holding) { holding.manual = false; updateGhost(); } else { selIdx = -1; setHover(pickAt()); }
   });
-  dom.addEventListener('pointerleave', () => { mouse.in = false; if (holding) updateGhost(); });
-  dom.addEventListener('pointerdown', e => { down = { x: e.clientX, y: e.clientY, t: performance.now(), b: e.button }; });
+  dom.addEventListener('pointerleave', e => { if (e.pointerType !== 'mouse') return; mouse.in = false; if (holding && !holding.manual) updateGhost(); });
+  dom.addEventListener('pointerdown', e => { down = { x: e.clientX, y: e.clientY, t: performance.now(), b: e.button, touch: e.pointerType !== 'mouse' }; });
   dom.addEventListener('pointerup', e => {
-    if (!down) return; const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y), quick = performance.now() - down.t < 450, b = down.b; down = null;
-    if (!buildMode || moved > 6 || !quick) return;
+    if (!down) return; const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y), quick = performance.now() - down.t < 450, b = down.b, touch = down.touch; down = null;
+    if (!buildMode || moved > (touch ? 14 : 6) || !quick) return;
     if (b === 2) { if (holding) cancelHolding(); return; }
     if (b !== 0) return;
-    if (holding) { if (!placeHeld()) toast('Move it onto a glowing spot to bolt it on'); }
-    else { const o = pickAt(); if (o) takeOff(o.userData.uid); }
+    at(e); mouse.in = true;
+    if (holding) {
+      // a click or a tap bolts the part to the glowing spot nearest to it
+      carRoot.updateMatrixWorld();
+      const s = nearest(holding.key);
+      if (s) { holding.snap = s; placeHeld(); }
+      else toast(touch ? 'Tap one of the glowing spots to bolt it on' : 'Move it onto a glowing spot to bolt it on');
+      if (touch) mouse.in = false;
+    } else { const o = pickAt(); if (o) takeOff(o.userData.uid); if (touch) mouse.in = false; }
   });
   dom.addEventListener('contextmenu', e => e.preventDefault());
-  // dragging a part in from the panel and letting go over the car
+  // dragging a part in from the panel and letting go over the car (a finger stays captured by the panel, so look at
+  // what is under it instead of at the event's target)
+  const overCar = e => document.elementFromPoint(e.clientX, e.clientY) === dom;
   window.addEventListener('pointermove', e => {
     if (!holding || !holding.drag) return;
-    const r = dom.getBoundingClientRect(); mouse.x = e.clientX - r.left; mouse.y = e.clientY - r.top;
-    mouse.in = e.target === dom; updateGhost();
+    at(e); mouse.in = overCar(e);
+    if (mouse.in) holding.manual = false;
+    if (!holding.manual) updateGhost();
   });
   window.addEventListener('pointerup', e => {
     if (!holding || !holding.drag) return;
     holding.drag = false;
-    if (e.target === dom && holding.snap) placeHeld();
+    if (overCar(e) && !holding.manual && holding.snap) placeHeld();
+    if (e.pointerType !== 'mouse') { mouse.in = false; if (holding && !holding.manual) { holding.manual = true; holding.snap = holding.snap || preferred(holding.key, A.freeSockets(holding.key, placed)); showSnap(); } }
   });
-  window.addEventListener('keydown', e => { if (e.key === 'Escape' && holding) cancelHolding(); });
+  // a finger that started on the parts list and turned into a scroll: the part stays in hand, nothing follows it
+  window.addEventListener('pointercancel', () => { if (holding && holding.drag) { holding.drag = false; holding.manual = true; showSnap(); } });
+  window.addEventListener('keydown', e => { if (e.key === 'Escape' && holding && !document.querySelector('.modal:not([hidden])')) cancelHolding(); });
 
   /* ---------- modes ---------- */
   function setBuildMode(b) {
@@ -204,12 +255,13 @@ export function createBuilder({ scene, camera, dom, garage, onChange, toast }) {
     }
     pulse += dt;
     for (const mk of markers.children) { mk.material.opacity = 0.18 + Math.sin(pulse * 5) * 0.08; mk.children[0].material.opacity = 0.65 + Math.sin(pulse * 5) * 0.3; }
-    if (holding && mouse.in && !holding.snap) updateGhost();
+    if (holding && mouse.in && !holding.snap && !holding.manual) updateGhost();
     if (hover) outline.setFromObject(hover);
   }
 
   return {
-    carRoot, update, startHolding, cancelHolding, setBuildMode, reset,
+    carRoot, update, startHolding, cancelHolding, setBuildMode, reset, placeHeld, cycleSnap, selectPlaced, takeOffSelected,
+    get selected() { return selIdx >= 0 && placed[selIdx] ? placed[selIdx].key : null; },
     get buildMode() { return buildMode; }, get holding() { return holding && holding.key; },
     get placed() { return placed.map(p => ({ uid: p.uid, key: p.key, socket: p.socket })); },
     settle(secs) { for (let i = 0; i < secs * 60; i++) update(1 / 60); },

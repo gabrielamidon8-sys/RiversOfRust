@@ -1,3 +1,9 @@
 node_modules/
 .DS_Store
 _shots/
+android/build/
+android/out/
+*.apk
+*.p12
+*.jks
+*.keystore
