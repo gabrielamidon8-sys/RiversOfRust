@@ -1,0 +1,144 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>RiversOfRust tile render</title>
+<style>html,body{margin:0;background:#000}canvas{display:block}</style>
+<script type="importmap">{ "imports": { "three": "../vendor/three.module.js", "three/addons/": "../vendor/addons/", "cannon-es": "../vendor/cannon-es.js" } }</script>
+</head><body>
+<script type="module">
+// Renders the "coming soon" tile for the DeclAIre Studios Games section: the aftermath on the sand, with the game's
+// own engine and wheel lying among spent brass, scorch marks, a crate and smoke. Open with ?w=1920&h=1080.
+import * as THREE from 'three';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+import { buildEngine, buildWheel } from '../js/parts.js';
+import { sandTex, plankTex, rustPaintTex, mats } from '../js/materials.js';
+
+const q = new URLSearchParams(location.search), W = +q.get('w') || 1920, H = +q.get('h') || 1080;
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setSize(W, H); renderer.setPixelRatio(1); document.body.appendChild(renderer.domElement);
+renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.0; renderer.outputColorSpace = THREE.SRGBColorSpace;
+const scene = new THREE.Scene();
+const pm = new THREE.PMREMGenerator(renderer); scene.environment = pm.fromScene(new RoomEnvironment(), 0.04).texture; scene.environmentIntensity = 0.55;
+scene.fog = new THREE.Fog(0xd3a274, 6, 19);
+// a hazy evening sky: a gradient by height, dusty at the horizon
+scene.background = new THREE.Color(0xe3b07c);
+scene.add(new THREE.Mesh(new THREE.SphereGeometry(45, 48, 24), new THREE.ShaderMaterial({ side: THREE.BackSide, depthWrite: false, fog: false,
+  vertexShader: 'varying vec3 vP; void main(){ vP = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+  fragmentShader: 'varying vec3 vP; void main(){ float y = max(vP.y, 0.0); vec3 hz = vec3(0.98, 0.72, 0.47), mid = vec3(0.78, 0.5, 0.36), top = vec3(0.36, 0.3, 0.36); vec3 c = mix(hz, mid, smoothstep(0.0, 0.18, y)); c = mix(c, top, smoothstep(0.18, 0.75, y)); float sun = pow(max(dot(normalize(vP), normalize(vec3(-7.0, 2.6, -4.5))), 0.0), 40.0); gl_FragColor = vec4(c + vec3(1.0, 0.7, 0.4) * sun * 0.9, 1.0); }' })));
+// the sand runs out to the horizon
+{ const far = new THREE.Mesh(new THREE.CircleGeometry(60, 48), new THREE.MeshStandardMaterial({ color: 0xc9925f, roughness: 1 })); far.rotation.x = -Math.PI / 2; far.position.y = -0.18; far.receiveShadow = true; scene.add(far); }
+let seed = 11; const rnd = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);
+const cast = o => { o.traverse(c => { if (c.isMesh) { c.castShadow = true; c.receiveShadow = true; } }); return o; };
+
+// light: a low, hot evening sun from behind on the left, a cool sky fill
+scene.add(new THREE.HemisphereLight(0xa9c0de, 0x6a4026, 0.45));
+const sun = new THREE.DirectionalLight(0xffb870, 5.2); sun.position.set(-7, 2.6, -4.5); sun.castShadow = true;
+sun.shadow.mapSize.set(4096, 4096); Object.assign(sun.shadow.camera, { left: -6, right: 6, top: 6, bottom: -6, near: 0.5, far: 25 }); sun.shadow.bias = -0.0003; sun.shadow.normalBias = 0.01; sun.shadow.radius = 1.5;
+scene.add(sun);
+const bounce = new THREE.DirectionalLight(0xffc796, 1.5); bounce.position.set(4, 2.2, 6); scene.add(bounce);
+const rimL = new THREE.DirectionalLight(0xffe0b0, 1.2); rimL.position.set(6, 3, -6); scene.add(rimL);
+
+// sand: a gently rolling ground with ripples, tyre ruts through the middle
+const sand = sandTex(); sand.color.repeat.set(14, 14); sand.bump.repeat.set(14, 14);
+const g = new THREE.PlaneGeometry(30, 30, 300, 300); const P = g.attributes.position;
+for (let i = 0; i < P.count; i++) {
+  const x = P.getX(i), y = P.getY(i);
+  let h = Math.sin(x * 0.35 + 1) * 0.12 + Math.cos(y * 0.28 + x * 0.1) * 0.1 + Math.sin(x * 2.1 + y * 1.3) * 0.015;
+  for (const rx of [-0.55, 0.55]) { const d = Math.abs(x - rx - y * 0.25); if (d < 0.18) h -= (1 - d / 0.18) * 0.05; }   // ruts
+  P.setZ(i, h);
+}
+g.computeVertexNormals();
+const ground = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ map: sand.color, bumpMap: sand.bump, bumpScale: 2.2, roughness: 0.98, color: 0xf0d7b8 }));
+ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; scene.add(ground);
+const heightAt = (x, z) => { const y = -z; let h = Math.sin(x * 0.35 + 1) * 0.12 + Math.cos(y * 0.28 + x * 0.1) * 0.1 + Math.sin(x * 2.1 + y * 1.3) * 0.015; for (const rx of [-0.55, 0.55]) { const d = Math.abs(x - rx - y * 0.25); if (d < 0.18) h -= (1 - d / 0.18) * 0.05; } return h; };
+
+// scorch marks
+const scorchTex = (() => { const c = document.createElement('canvas'); c.width = c.height = 256; const x = c.getContext('2d');
+  const gr = x.createRadialGradient(128, 128, 4, 128, 128, 128); gr.addColorStop(0, 'rgba(6,5,4,1)'); gr.addColorStop(0.35, 'rgba(14,10,8,0.92)'); gr.addColorStop(0.7, 'rgba(50,32,20,0.35)'); gr.addColorStop(1, 'rgba(60,40,25,0)');
+  x.fillStyle = gr; x.fillRect(0, 0, 256, 256);
+  x.globalCompositeOperation = 'destination-out';
+  for (let i = 0; i < 220; i++) { const a = Math.random() * 6.28, r = 40 + Math.random() * 90, px = 128 + Math.cos(a) * r, py = 128 + Math.sin(a) * r, rr = 4 + Math.random() * 18; const g2 = x.createRadialGradient(px, py, 0, px, py, rr); g2.addColorStop(0, 'rgba(0,0,0,0.5)'); g2.addColorStop(1, 'rgba(0,0,0,0)'); x.fillStyle = g2; x.fillRect(px - rr, py - rr, rr * 2, rr * 2); }
+  x.globalCompositeOperation = 'source-over';
+  for (let i = 0; i < 60; i++) { const px = 128 + (Math.random() - 0.5) * 90, py = 128 + (Math.random() - 0.5) * 90; x.fillStyle = `rgba(${Math.random() < 0.2 ? '90,60,40' : '5,4,3'},${0.15 + Math.random() * 0.3})`; x.fillRect(px, py, 1 + Math.random() * 4, 1 + Math.random() * 4); }
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t; })();
+for (const [x, z, s] of [[2.2, -0.6, 2.6], [-2.4, 0.9, 1.9], [0.2, -2.4, 1.7], [3.0, 2.0, 1.2]]) {
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(s, s), new THREE.MeshStandardMaterial({ map: scorchTex, transparent: true, depthWrite: false, roughness: 1, polygonOffset: true, polygonOffsetFactor: -4 }));
+  m.rotation.x = -Math.PI / 2; m.rotation.z = rnd() * 6; m.position.set(x, heightAt(x, z) + 0.02, z); m.receiveShadow = true; scene.add(m);
+}
+
+// the game's own V8, dumped on the sand on the right, tipped over
+const eng = cast(buildEngine()); eng.scale.setScalar(1.25); eng.position.set(2.05, heightAt(2.05, -0.5) - 0.05, -0.5); eng.rotation.set(0.05, -2.45, 0.1); scene.add(eng);
+// a wheel lying flat on the left, and another leaning on the crate
+const w1 = cast(buildWheel(false)); const s1 = w1.getObjectByName('spin'); w1.remove(s1); s1.position.set(-2.05, heightAt(-2.05, 0.9) + 0.13, 0.9); s1.rotation.set(0, 0.4, Math.PI / 2 - 0.05); scene.add(s1);
+const w2 = cast(buildWheel(true)); const s2 = w2.getObjectByName('spin'); w2.remove(s2); s2.position.set(-2.35, heightAt(-2.35, -1.05) + 0.42, -1.05); s2.rotation.set(0.0, 1.25 + Math.PI, -0.18); scene.add(s2);
+// a plank crate with steel corners and a stencil
+const stencil = (() => { const c = document.createElement('canvas'); c.width = 512; c.height = 512; const x = c.getContext('2d'); x.drawImage(plankTex().image, 0, 0, 512, 512);
+  x.font = '900 86px Impact, sans-serif'; x.fillStyle = 'rgba(25,18,12,0.82)'; x.textAlign = 'center'; x.fillText('AMMO', 256, 250); x.font = '700 40px "Courier New", monospace'; x.fillText('.50 CAL · RoR', 256, 315);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t; })();
+const crate = new THREE.Group(); scene.add(crate);
+crate.add(new THREE.Mesh(new RoundedBoxGeometry(0.9, 0.62, 0.62, 2, 0.02), new THREE.MeshStandardMaterial({ map: stencil, roughness: 0.85 })));
+const steel = new THREE.MeshStandardMaterial({ color: 0x3c3f42, roughness: 0.5, metalness: 0.8 });
+for (const sx of [-1, 1]) for (const sy of [-1, 1]) for (const sz of [-1, 1]) { const b = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, 0.08), steel); b.position.set(sx * 0.43, sy * 0.29, sz * 0.29); crate.add(b); }
+crate.position.set(-2.2, heightAt(-2.2, -1.9) + 0.29, -1.9); crate.rotation.set(0, 0.55, 0.03); cast(crate);
+// an olive ammo can and a red jerry can
+const can = new THREE.Mesh(new RoundedBoxGeometry(0.32, 0.2, 0.14, 2, 0.015), new THREE.MeshStandardMaterial({ color: 0x3f4a2a, roughness: 0.5, metalness: 0.5 }));
+can.position.set(1.35, heightAt(1.35, 1.1) + 0.1, 1.1); can.rotation.y = -0.5; scene.add(cast(can));
+const jerry = new THREE.Mesh(new RoundedBoxGeometry(0.17, 0.46, 0.34, 2, 0.03), new THREE.MeshStandardMaterial({ map: rustPaintTex('#8a1f15', 0.45, 92, 256).color, roughness: 0.55, metalness: 0.5 }));
+jerry.position.set(2.95, heightAt(2.95, -2.1) + 0.21, -2.1); jerry.rotation.set(0, 0.6, -0.12); scene.add(cast(jerry));
+// spent brass, live rounds and a length of belt, scattered across the front
+const brass = new THREE.MeshStandardMaterial({ color: 0xc89a46, roughness: 0.28, metalness: 1 });
+const copper = new THREE.MeshStandardMaterial({ color: 0xb06a3a, roughness: 0.3, metalness: 1 });
+const casing = new THREE.CylinderGeometry(0.011, 0.012, 0.1, 14), neck = new THREE.CylinderGeometry(0.008, 0.011, 0.02, 14), tip = new THREE.ConeGeometry(0.0085, 0.045, 14);
+function round(live) { const o = new THREE.Group(); const c = new THREE.Mesh(casing, brass); o.add(c); const n = new THREE.Mesh(neck, brass); n.position.y = 0.06; o.add(n); if (live) { const t = new THREE.Mesh(tip, copper); t.position.y = 0.092; o.add(t); } return cast(o); }
+for (let i = 0; i < 260; i++) {
+  const side = rnd() < 0.5 ? -1 : 1, x = side * (0.9 + Math.pow(rnd(), 0.7) * 2.4), z = -1.8 + rnd() * 4.4;
+  if (Math.abs(x) < 1.1 && z > -1 && z < 2.6) continue;   // keep the middle clear for the words
+  const o = round(rnd() < 0.15); o.rotation.set(Math.PI / 2, rnd() * 6.28, 0); o.rotateX((rnd() - 0.5) * 0.3);
+  o.position.set(x, heightAt(x, z) + 0.011, z); scene.add(o);
+}
+for (let i = 0; i < 14; i++) { const o = round(true); o.rotation.set(Math.PI / 2, 0, 0.6); o.position.set(-1.45 + i * 0.026, heightAt(-1.45, 2.2) + 0.012, 2.2 - i * 0.03 + Math.sin(i * 0.6) * 0.03); scene.add(o); }
+for (let i = 0; i < 10; i++) { const o = round(true); o.rotation.set(Math.PI / 2, 0, -0.4); o.position.set(1.9 + i * 0.027, heightAt(1.9, 1.75) + 0.012, 1.75 + i * 0.02); scene.add(o); }
+// a spanner and a few bolts
+const wrench = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.012, 0.32), new THREE.MeshStandardMaterial({ color: 0x9ca2a7, roughness: 0.3, metalness: 1 }));
+wrench.position.set(1.25, heightAt(1.25, 0.3) + 0.01, 0.3); wrench.rotation.y = 0.9; scene.add(cast(wrench));
+// sand drifted against the things lying in it, a few stones and bits of scrap
+const sandMat = new THREE.MeshStandardMaterial({ map: sand.color, bumpMap: sand.bump, bumpScale: 2.2, roughness: 0.98, color: 0xe8cba6 });
+for (const [x, z, sx, sz] of [[-2.05, 0.9, 0.9, 0.7], [2.05, -0.5, 1.0, 0.8], [-2.2, -1.9, 0.8, 0.5], [-2.35, -1.05, 0.5, 0.4]]) { const m = new THREE.Mesh(new THREE.SphereGeometry(1, 24, 12), sandMat); m.scale.set(sx, 0.07, sz); m.position.set(x, heightAt(x, z) - 0.02, z); m.receiveShadow = true; scene.add(m); }
+const stone = new THREE.MeshStandardMaterial({ color: 0x8a6a50, roughness: 0.95, flatShading: true });
+for (let i = 0; i < 40; i++) { const x = (rnd() - 0.5) * 9, z = -2.5 + rnd() * 5; if (Math.abs(x) < 1 && z > -1) continue; const r = 0.015 + rnd() * 0.04; const m = new THREE.Mesh(new THREE.DodecahedronGeometry(r, 0), stone); m.position.set(x, heightAt(x, z) + r * 0.4, z); m.rotation.set(rnd() * 3, rnd() * 3, rnd() * 3); scene.add(cast(m)); }
+const scrap = mats().frame;
+for (const [x, z, w, d, r] of [[1.0, -1.6, 0.5, 0.3, 0.7], [-1.1, 1.5, 0.35, 0.22, -0.4], [3.4, 0.6, 0.4, 0.25, 1.9]]) { const m = new THREE.Mesh(new THREE.BoxGeometry(w, 0.012, d), scrap); m.position.set(x, heightAt(x, z) + 0.01, z); m.rotation.set(0.06, r, 0.04); scene.add(cast(m)); }
+const camera = new THREE.PerspectiveCamera(34, W / H, 0.05, 60);
+camera.position.set(0.0, 1.55, 5.6); camera.lookAt(0.0, 0.3, -0.4);
+// render to a target with depth, then blur by distance from the focus and grade like film
+const rt = new THREE.WebGLRenderTarget(W, H, { samples: 4, type: THREE.HalfFloatType }); rt.depthTexture = new THREE.DepthTexture(W, H);
+const rtNoMs = new THREE.WebGLRenderTarget(W, H, { type: THREE.HalfFloatType }); rtNoMs.depthTexture = new THREE.DepthTexture(W, H);
+renderer.toneMapping = THREE.NoToneMapping;
+renderer.setRenderTarget(rtNoMs); renderer.render(scene, camera);
+renderer.setRenderTarget(null);
+const post = new THREE.ShaderMaterial({
+  uniforms: { tColor: { value: rtNoMs.texture }, tDepth: { value: rtNoMs.depthTexture }, near: { value: camera.near }, far: { value: camera.far }, focus: { value: 6.0 }, res: { value: new THREE.Vector2(W, H) }, seed: { value: 3.7 } },
+  vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }',
+  fragmentShader: `precision highp float; varying vec2 vUv; uniform sampler2D tColor, tDepth; uniform float near, far, focus, seed; uniform vec2 res;
+    float lin(float d){ float z = d * 2.0 - 1.0; return 2.0 * near * far / (far + near - z * (far - near)); }
+    float coc(vec2 uv){ float z = lin(texture2D(tDepth, uv).x); return clamp(max(abs(z - focus) - 1.6, 0.0) / z * 4.5, 0.0, 1.0); }
+    vec3 aces(vec3 x){ return clamp((x*(2.51*x+0.03))/(x*(2.43*x+0.59)+0.14), 0.0, 1.0); }
+    float h(vec2 p){ return fract(sin(dot(p, vec2(12.9898, 78.233)) + seed) * 43758.5453); }
+    void main(){
+      float c = coc(vUv); vec3 acc = vec3(0.0); float wsum = 0.0; float R = c * 9.0;
+      for (int i = 0; i < 48; i++) { float a = float(i) * 2.39996; float r = sqrt(float(i) / 48.0) * R; vec2 o = vec2(cos(a), sin(a)) * r / res;
+        float cs = coc(vUv + o); float w = (cs * 9.0 >= r * 0.8 || cs >= c) ? 1.0 : 0.15; acc += texture2D(tColor, vUv + o).rgb * w; wsum += w; }
+      vec3 col = acc / wsum;
+      col = aces(col * 1.02);
+      col = pow(col, vec3(1.0 / 2.2));
+      col = mix(col, col * vec3(1.06, 0.98, 0.88), 0.6);                                  // warm grade
+      col = (col - 0.5) * 1.08 + 0.5;                                                      // a touch of contrast
+      float v = smoothstep(1.25, 0.35, length((vUv - 0.5) * vec2(1.25, 1.0))); col *= mix(0.62, 1.0, v);   // vignette
+      col += (h(vUv * res) - 0.5) * 0.035;                                                 // grain
+      gl_FragColor = vec4(clamp(col, 0.0, 1.0), 1.0); }`
+});
+const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), post); const ps = new THREE.Scene(); ps.add(quad);
+renderer.render(ps, new THREE.Camera());
+window.TILE_DONE = true;
+</script>
+</body></html>
